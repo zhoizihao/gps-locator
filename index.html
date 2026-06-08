@@ -1,0 +1,766 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+
+<!-- PWA / iOS Web App -->
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="GPS定位">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#0a0e14">
+<meta name="description" content="高精度GPS定位工具">
+
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icon-180.png">
+
+<title>GPS 精确定位</title>
+
+<script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
+
+<style>
+  :root {
+    --bg: #0a0e14;
+    --surface: #141b22;
+    --border: #1e2a36;
+    --text: #e0e6ed;
+    --text-secondary: #8899aa;
+    --accent: #00c8ff;
+    --accent-glow: rgba(0,200,255,0.25);
+    --success: #00e676;
+    --warn: #ffab00;
+    --danger: #ff5252;
+    --radius: 16px;
+    --radius-sm: 10px;
+    --safe-bottom: env(safe-area-inset-bottom, 16px);
+    --safe-top: env(safe-area-inset-top, 0px);
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html { height: 100%; -webkit-tap-highlight-color: transparent; }
+  body {
+    font-family: 'SF Pro Display', 'Segoe UI', system-ui, -apple-system, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100%;
+    min-height: -webkit-fill-available;
+    display: flex;
+    justify-content: center;
+    align-items: flex-start;
+    padding: calc(var(--safe-top) + 16px) 16px var(--safe-bottom);
+    background-image:
+      radial-gradient(ellipse at 50% 28%, rgba(0,180,240,0.06) 0%, transparent 60%),
+      radial-gradient(ellipse at 20% 78%, rgba(0,200,255,0.03) 0%, transparent 50%);
+    -webkit-user-select: none;
+    user-select: none;
+  }
+
+  .container {
+    width: 100%;
+    max-width: 600px;
+    display: flex;
+    flex-direction: column;
+    gap: 24px;
+  }
+
+  /* ── Header ─────────────────────── */
+  .header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    padding: 0 4px;
+  }
+  .header-left h1 {
+    font-size: 1.7rem;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    background: linear-gradient(135deg, #e0e6ed 0%, #a0b8cc 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+  .header-left .sub {
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+    margin-top: 1px;
+  }
+
+  /* ── Satellite ──────────────────── */
+  .satellite {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 4px;
+    min-width: 80px;
+  }
+  .sat-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .sat-dish {
+    position: relative;
+    width: 20px; height: 20px;
+  }
+  .sat-dish svg {
+    width: 100%; height: 100%;
+  }
+  .sat-dish .ring { fill: none; stroke: var(--text-secondary); stroke-width: 1.5; }
+  .sat-dish .center { fill: var(--text-secondary); }
+  .sat-dish.active .ring { stroke: var(--success); }
+  .sat-dish.active .center { fill: var(--success); }
+
+  .sat-bars {
+    display: flex;
+    align-items: flex-end;
+    gap: 2.5px;
+    height: 26px;
+  }
+  .sat-bars .bar {
+    width: 4.5px;
+    border-radius: 2px;
+    background: var(--text-secondary);
+    transition: background 0.4s, box-shadow 0.4s;
+  }
+  .sat-bars .bar:nth-child(1) { height: 6px; }
+  .sat-bars .bar:nth-child(2) { height: 12px; }
+  .sat-bars .bar:nth-child(3) { height: 18px; }
+  .sat-bars .bar:nth-child(4) { height: 24px; }
+
+  .sat-bars.lvl-4 .bar { background: var(--success); box-shadow: 0 0 5px rgba(0,230,118,0.5); }
+  .sat-bars.lvl-3 .bar:nth-child(-n+3) { background: var(--success); }
+  .sat-bars.lvl-2 .bar:nth-child(-n+2) { background: var(--warn); }
+  .sat-bars.lvl-1 .bar:nth-child(1) { background: var(--danger); }
+
+  .sat-label {
+    font-size: 0.65rem;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    text-align: right;
+    line-height: 1.3;
+  }
+
+  /* ── Location Circle ────────────── */
+  .circle-area {
+    display: flex;
+    justify-content: center;
+    padding: 10px 0 6px;
+  }
+  .location-circle {
+    width: 170px; height: 170px;
+    border-radius: 50%;
+    background: var(--surface);
+    border: 2px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    position: relative;
+    transition: border-color 0.5s, box-shadow 0.5s;
+    -webkit-backdrop-filter: blur(10px);
+    backdrop-filter: blur(10px);
+  }
+  .location-circle.idle {
+    animation: idle-glow 3.2s ease-in-out infinite;
+  }
+  .location-circle.pulse {
+    border-color: var(--accent);
+    animation: pulse-ring 1.8s ease-out infinite;
+  }
+  .location-circle.locked {
+    border-color: var(--success);
+    box-shadow: 0 0 28px rgba(0,230,118,0.25);
+    animation: none;
+  }
+  @keyframes idle-glow {
+    0%, 100% { box-shadow: 0 0 12px rgba(0,210,130,0.04); }
+    50%      { box-shadow: 0 0 38px rgba(0,210,130,0.12); }
+  }
+  @keyframes pulse-ring {
+    0%   { box-shadow: 0 0 0 0 var(--accent-glow); }
+    70%  { box-shadow: 0 0 0 30px transparent; }
+    100% { box-shadow: 0 0 0 0 transparent; }
+  }
+
+  .pin-icon {
+    width: 42px; height: 42px;
+    margin-bottom: 2px;
+  }
+  .pin-icon svg {
+    width: 100%; height: 100%;
+    fill: none; stroke: var(--text-secondary);
+    stroke-width: 2; stroke-linecap: round; stroke-linejoin: round;
+    transition: stroke 0.4s;
+  }
+  .location-circle.locked .pin-icon svg { stroke: var(--success); }
+  .circle-text {
+    font-size: 0.72rem;
+    color: var(--text-secondary);
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    font-weight: 600;
+    transition: color 0.4s;
+  }
+  .location-circle.locked .circle-text { color: var(--success); }
+
+  /* ── Accuracy ───────────────────── */
+  .accuracy-row {
+    text-align: center;
+    font-size: 0.78rem;
+    color: var(--text-secondary);
+    min-height: 22px;
+  }
+  .accuracy-row span {
+    color: var(--accent);
+    font-weight: 600;
+  }
+
+  /* ── Buttons ────────────────────── */
+  .btn-row {
+    display: flex;
+    justify-content: center;
+    gap: 10px;
+    flex-wrap: wrap;
+  }
+  .btn {
+    padding: 12px 22px;
+    border-radius: var(--radius-sm);
+    border: none;
+    font-size: 0.9rem;
+    font-weight: 600;
+    cursor: pointer;
+    letter-spacing: 0.02em;
+    transition: transform 0.12s, box-shadow 0.2s, background 0.2s, opacity 0.2s;
+    -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;
+  }
+  .btn:active { transform: scale(0.95); }
+  .btn-primary {
+    background: var(--accent);
+    color: #0a0e14;
+    box-shadow: 0 4px 20px var(--accent-glow);
+    flex: 1;
+    max-width: 220px;
+  }
+  .btn-primary:hover { box-shadow: 0 6px 28px rgba(0,200,255,0.4); }
+  .btn-primary:disabled {
+    background: #1e2a36;
+    color: #556;
+    box-shadow: none;
+    cursor: not-allowed;
+  }
+  .btn-outline {
+    background: transparent;
+    color: var(--accent);
+    border: 1.5px solid var(--accent);
+  }
+  .btn-outline:hover { background: rgba(0,200,255,0.06); }
+  .btn-outline.danger {
+    color: var(--danger);
+    border-color: var(--danger);
+  }
+  .btn-outline.danger:hover { background: rgba(255,82,82,0.06); }
+
+  /* ── Table ──────────────────────── */
+  .table-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    overflow: hidden;
+  }
+  .table-top {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 14px 18px;
+    border-bottom: 1px solid var(--border);
+  }
+  .table-top h3 {
+    font-size: 0.88rem;
+    font-weight: 600;
+  }
+  .table-top .count {
+    font-size: 0.7rem;
+    color: var(--text-secondary);
+    background: var(--bg);
+    padding: 4px 12px;
+    border-radius: 20px;
+  }
+  .scroll-wrap {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    min-width: 360px;
+  }
+  thead th {
+    font-size: 0.68rem;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--text-secondary);
+    padding: 11px 14px;
+    text-align: left;
+    border-bottom: 1px solid var(--border);
+    font-weight: 500;
+    white-space: nowrap;
+    position: sticky;
+    top: 0;
+    background: var(--surface);
+    z-index: 1;
+  }
+  tbody td {
+    padding: 10px 14px;
+    font-size: 0.83rem;
+    border-bottom: 1px solid rgba(30,42,54,0.5);
+    font-variant-numeric: tabular-nums;
+    font-family: 'SF Mono', 'Cascadia Code', 'Consolas', 'Menlo', monospace;
+    white-space: nowrap;
+  }
+  tbody tr { transition: background 0.2s; }
+  tbody tr:hover { background: rgba(255,255,255,0.015); }
+  tbody tr:last-child { animation: row-in 0.4s ease-out; }
+  @keyframes row-in {
+    from { background: rgba(0,200,255,0.08); }
+    to   { background: transparent; }
+  }
+
+  /* Editable ID cell */
+  tbody td.col-id { padding: 0; }
+  tbody td.col-id input {
+    width: 100%;
+    background: transparent;
+    border: 1.5px solid transparent;
+    color: var(--accent);
+    font-size: 0.83rem;
+    font-family: inherit;
+    font-variant-numeric: tabular-nums;
+    padding: 10px 12px;
+    border-radius: 6px;
+    outline: none;
+    transition: border-color 0.2s, background 0.2s;
+    -webkit-user-select: text;
+    user-select: text;
+  }
+  tbody td.col-id input:hover { border-color: var(--border); }
+  tbody td.col-id input:focus {
+    border-color: var(--accent);
+    background: rgba(0,200,255,0.03);
+  }
+
+  .empty-table {
+    text-align: center;
+    padding: 42px 20px;
+    color: var(--text-secondary);
+    font-size: 0.82rem;
+  }
+  .empty-table .icon {
+    font-size: 2.2rem;
+    margin-bottom: 8px;
+    opacity: 0.4;
+  }
+
+  /* ── Toast ──────────────────────── */
+  .toast {
+    position: fixed;
+    bottom: calc(24px + var(--safe-bottom));
+    left: 50%;
+    transform: translateX(-50%);
+    background: var(--surface);
+    border: 1px solid var(--border);
+    color: var(--text);
+    padding: 12px 22px;
+    border-radius: var(--radius-sm);
+    font-size: 0.82rem;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.3s, transform 0.3s;
+    z-index: 100;
+    text-align: center;
+    max-width: 90vw;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+  }
+  .toast.show {
+    opacity: 1;
+    transform: translateX(-50%) translateY(-4px);
+  }
+  .toast.error { border-color: var(--danger); color: var(--danger); }
+
+  /* ── Scrollbar ──────────────────── */
+  ::-webkit-scrollbar { width: 4px; height: 4px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+
+  /* ── Responsive ─────────────────── */
+  @media (max-width: 400px) {
+    .btn { padding: 12px 16px; font-size: 0.82rem; }
+    .location-circle { width: 140px; height: 140px; }
+    .pin-icon { width: 36px; height: 36px; }
+    thead th, tbody td { padding: 9px 10px; font-size: 0.76rem; }
+    tbody td.col-id input { font-size: 0.76rem; padding: 8px 10px; }
+  }
+</style>
+</head>
+<body>
+
+<div class="container">
+
+  <!-- Header -->
+  <div class="header">
+    <div class="header-left">
+      <h1>GPS 精确定位</h1>
+      <div class="sub">Geolocation API · High Accuracy</div>
+    </div>
+    <div class="satellite">
+      <div class="sat-row">
+        <div class="sat-dish" id="satDish">
+          <svg viewBox="0 0 24 24">
+            <circle class="ring" cx="12" cy="12" r="9"/>
+            <circle class="center" cx="12" cy="12" r="3.5"/>
+          </svg>
+        </div>
+        <div class="sat-bars" id="satBars">
+          <div class="bar"></div><div class="bar"></div>
+          <div class="bar"></div><div class="bar"></div>
+        </div>
+      </div>
+      <div class="sat-label" id="satLabel">等待定位</div>
+    </div>
+  </div>
+
+  <!-- Circle -->
+  <div class="circle-area">
+    <div class="location-circle" id="circle">
+      <div class="pin-icon">
+        <svg viewBox="0 0 24 24">
+          <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z"/>
+          <circle cx="12" cy="9" r="3"/>
+        </svg>
+      </div>
+      <div class="circle-text" id="circleText">就绪</div>
+    </div>
+  </div>
+
+  <!-- Accuracy -->
+  <div class="accuracy-row" id="accuracyBadge"></div>
+
+  <!-- Buttons -->
+  <div class="btn-row">
+    <button class="btn btn-primary" id="btnCapture" onclick="captureLocation()">
+      定位当前位置
+    </button>
+    <button class="btn btn-outline" id="btnExport" onclick="exportExcel()">
+      导出 XLSX
+    </button>
+    <button class="btn btn-outline danger" id="btnClear" onclick="clearTable()">
+      清空
+    </button>
+  </div>
+
+  <!-- Table -->
+  <div class="table-card">
+    <div class="table-top">
+      <h3>定位记录</h3>
+      <span class="count" id="rowCount">0 条记录</span>
+    </div>
+    <div class="scroll-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th class="col-id">ID</th>
+            <th class="col-lat">纬度 Latitude</th>
+            <th class="col-lng">经度 Longitude</th>
+          </tr>
+        </thead>
+        <tbody id="tableBody">
+          <tr class="empty-row">
+            <td colspan="3">
+              <div class="empty-table">
+                <div class="icon">📍</div>
+                点击「定位当前位置」开始记录
+              </div>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+  // ── Elements ─────────────────────
+  const circle     = document.getElementById('circle');
+  const circleText = document.getElementById('circleText');
+  const accuracyBadge = document.getElementById('accuracyBadge');
+  const satBars    = document.getElementById('satBars');
+  const satLabel   = document.getElementById('satLabel');
+  const satDish    = document.getElementById('satDish');
+  const btnCapture = document.getElementById('btnCapture');
+  const tableBody  = document.getElementById('tableBody');
+  const rowCountEl = document.getElementById('rowCount');
+  const toastEl    = document.getElementById('toast');
+
+  let records = [];
+  let lastAccuracy = null;
+  let idCounter = 1;
+  let toastTimer = null;
+
+  // ── Geo options ──────────────────
+  const geoOptions = {
+    enableHighAccuracy: true,
+    timeout: 30000,
+    maximumAge: 0
+  };
+
+  // ── Storage ─────────────────────
+  function saveData() {
+    try {
+      localStorage.setItem('gps_records', JSON.stringify(records));
+      localStorage.setItem('gps_idCounter', String(idCounter));
+    } catch(e) { /* quota exceeded, ignore */ }
+  }
+
+  function loadData() {
+    try {
+      var raw = localStorage.getItem('gps_records');
+      if (raw) {
+        records = JSON.parse(raw);
+        // Restore number precision
+        records.forEach(function(r) {
+          r.lat = Number(r.lat);
+          r.lng = Number(r.lng);
+        });
+      }
+      var savedCounter = localStorage.getItem('gps_idCounter');
+      if (savedCounter) { idCounter = Number(savedCounter); }
+    } catch(e) { /* corrupted data, start fresh */ }
+  }
+
+  // ── Toast ────────────────────────
+  function showToast(msg, isError) {
+    clearTimeout(toastTimer);
+    toastEl.textContent = msg;
+    toastEl.className = 'toast' + (isError ? ' error' : '') + ' show';
+    toastTimer = setTimeout(function() { toastEl.className = 'toast'; }, 2800);
+  }
+
+  // ── Satellite indicator ─────────
+  function updateSatellite(accuracy) {
+    satBars.className = 'sat-bars';
+    satDish.className = 'sat-dish';
+    if (accuracy == null) {
+      satLabel.innerHTML = '等待定位';
+      return;
+    }
+    var level, label;
+    if (accuracy <= 5)       { level = 'lvl-4'; label = '精度极佳'; }
+    else if (accuracy <= 15) { level = 'lvl-3'; label = '精度良好'; }
+    else if (accuracy <= 50) { level = 'lvl-2'; label = '精度一般'; }
+    else                     { level = 'lvl-1'; label = '精度较低'; }
+    satBars.className = 'sat-bars ' + level;
+    satDish.className = 'sat-dish active';
+    satLabel.innerHTML = label + '<br>±' + Math.round(accuracy) + 'm';
+  }
+
+  // ── Circle state ────────────────
+  function setCircleState(state) {
+    circle.className = 'location-circle';
+    if (state === 'acquiring') {
+      circle.classList.add('pulse');
+      circleText.textContent = '获取中';
+    } else if (state === 'locked') {
+      circle.classList.add('locked');
+      circleText.textContent = '已定位';
+    } else {
+      circle.classList.add('idle');
+      circleText.textContent = '就绪';
+    }
+  }
+
+  // ── Render table ────────────────
+  function renderTable() {
+    tableBody.innerHTML = '';
+    if (records.length === 0) {
+      tableBody.innerHTML = '<tr class="empty-row"><td colspan="3"><div class="empty-table"><div class="icon">📍</div>暂无定位记录</div></td></tr>';
+    } else {
+      records.forEach(function(r, idx) {
+        var tr = document.createElement('tr');
+        tr.innerHTML =
+          '<td class="col-id"><input type="text" value="' + escapeHtml(r.id) +
+          '" data-idx="' + idx + '" onchange="updateId(' + idx + ', this.value)" onfocus="this.select()" inputmode="text"></td>' +
+          '<td>' + r.lat.toFixed(8) + '</td>' +
+          '<td>' + r.lng.toFixed(8) + '</td>';
+        tableBody.appendChild(tr);
+      });
+    }
+    rowCountEl.textContent = records.length + ' 条记录';
+  }
+
+  function escapeHtml(str) {
+    var div = document.createElement('div');
+    div.textContent = String(str);
+    return div.innerHTML;
+  }
+
+  function updateId(idx, newVal) {
+    var trimmed = newVal.trim();
+    if (trimmed === '') {
+      // restore previous
+      renderTable();
+      return;
+    }
+    records[idx].id = trimmed;
+    renderTable();
+    saveData();
+  }
+
+  // ── Capture location ────────────
+  function captureLocation() {
+    if (!navigator.geolocation) {
+      showToast('浏览器不支持 Geolocation API', true);
+      return;
+    }
+
+    btnCapture.disabled = true;
+    btnCapture.textContent = '获取中...';
+    setCircleState('acquiring');
+    updateSatellite(null);
+    accuracyBadge.innerHTML = '';
+
+    navigator.geolocation.getCurrentPosition(
+      function(pos) {
+        var lat = pos.coords.latitude;
+        var lng = pos.coords.longitude;
+        var acc = pos.coords.accuracy;
+
+        lastAccuracy = acc;
+        records.push({ id: String(idCounter++), lat: lat, lng: lng });
+        renderTable();
+        saveData();
+
+        setCircleState('locked');
+        updateSatellite(acc);
+        accuracyBadge.innerHTML = '定位精度 <span>±' + Math.round(acc) + ' m</span>';
+        showToast('定位成功  Lat ' + lat.toFixed(6) + '  Lng ' + lng.toFixed(6));
+        btnCapture.disabled = false;
+        btnCapture.textContent = '定位当前位置';
+
+        // Vibrate on mobile if available
+        if (navigator.vibrate) { navigator.vibrate(30); }
+      },
+      function(err) {
+        setCircleState('ready');
+        updateSatellite(null);
+        accuracyBadge.innerHTML = '';
+        btnCapture.disabled = false;
+        btnCapture.textContent = '定位当前位置';
+
+        var msgs = {
+          1: '位置权限被拒绝，请在系统设置中允许定位',
+          2: '无法获取位置，请检查 GPS/网络',
+          3: '定位超时，请移到开阔处重试'
+        };
+        showToast(msgs[err.code] || '定位失败: ' + err.message, true);
+      },
+      geoOptions
+    );
+  }
+
+  // ── Export XLSX ─────────────────
+  function exportExcel() {
+    if (records.length === 0) {
+      showToast('没有数据可导出', true);
+      return;
+    }
+    var data = [['ID', '纬度 (Latitude)', '经度 (Longitude)']];
+    records.forEach(function(r) { data.push([r.id, r.lat, r.lng]); });
+    var ws = XLSX.utils.aoa_to_sheet(data);
+    ws['!cols'] = [{wch:14}, {wch:22}, {wch:22}];
+    var wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'GPS定位记录');
+
+    var now = new Date();
+    var ts = now.getFullYear() +
+      String(now.getMonth()+1).padStart(2,'0') +
+      String(now.getDate()).padStart(2,'0') + '_' +
+      String(now.getHours()).padStart(2,'0') +
+      String(now.getMinutes()).padStart(2,'0') +
+      String(now.getSeconds()).padStart(2,'0');
+    var filename = 'GPS定位_' + ts + '.xlsx';
+
+    // Use SheetJS to generate array buffer, then handle download ourselves
+    var wbout = XLSX.write(wb, {bookType:'xlsx', type:'array'});
+    var blob = new Blob([wbout], {type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
+
+    // Try Web Share API first (best on iOS — opens native share sheet)
+    if (navigator.share && navigator.canShare) {
+      var file = new File([blob], filename, {type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
+      if (navigator.canShare({files:[file]})) {
+        navigator.share({files:[file], title:'GPS定位记录'}).then(function() {
+          showToast('导出成功');
+        }).catch(function() {
+          fallbackDownload(blob, filename);
+        });
+        return;
+      }
+    }
+    fallbackDownload(blob, filename);
+  }
+
+  function fallbackDownload(blob, filename) {
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    a.style.display = 'none';
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(function() {
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    }, 500);
+    showToast('Excel 导出成功');
+  }
+
+  // ── Clear table ─────────────────
+  function clearTable() {
+    if (records.length === 0) return;
+    if (!confirm('确定要清空全部 ' + records.length + ' 条定位记录吗？')) return;
+    records = [];
+    idCounter = 1;
+    renderTable();
+    saveData();
+    showToast('表格已清空');
+  }
+
+  // ── Init ────────────────────────
+  setCircleState('ready');
+  loadData();
+  renderTable();
+
+  if (!navigator.geolocation) {
+    btnCapture.disabled = true;
+    btnCapture.textContent = '定位不可用';
+  }
+
+  // ── Register Service Worker ─────
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('sw.js').catch(function() {});
+  }
+
+  // ── Handle iOS standalone resize ─
+  if (window.navigator.standalone) {
+    document.body.style.minHeight = window.innerHeight + 'px';
+    window.addEventListener('resize', function() {
+      document.body.style.minHeight = window.innerHeight + 'px';
+    });
+  }
+</script>
+</body>
+</html>

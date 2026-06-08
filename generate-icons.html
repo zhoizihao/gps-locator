@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>App Icon Generator — GPS定位</title>
+<style>
+  body {
+    font-family: 'Segoe UI', system-ui, sans-serif;
+    background: #0a0e14;
+    color: #e0e6ed;
+    display: flex; justify-content: center; align-items: center;
+    min-height: 100vh; margin: 0; padding: 24px;
+  }
+  .card {
+    background: #141b22;
+    border: 1px solid #1e2a36;
+    border-radius: 16px;
+    padding: 32px;
+    max-width: 480px;
+    width: 100%;
+    text-align: center;
+  }
+  h2 { margin: 0 0 8px; font-size: 1.4rem; }
+  p { color: #8899aa; font-size: 0.85rem; margin: 0 0 24px; line-height: 1.5; }
+  .previews {
+    display: flex; gap: 20px; justify-content: center; flex-wrap: wrap;
+    margin-bottom: 24px;
+  }
+  .preview-box {
+    text-align: center;
+  }
+  .preview-box canvas {
+    border-radius: 18px;
+    box-shadow: 0 4px 24px rgba(0,0,0,0.4);
+    background: #1a1a2e;
+  }
+  .preview-box .label {
+    font-size: 0.7rem; color: #8899aa; margin-top: 8px;
+  }
+  .btn {
+    display: inline-block;
+    padding: 14px 36px;
+    border-radius: 10px;
+    border: none;
+    font-size: 1rem;
+    font-weight: 600;
+    cursor: pointer;
+    background: #00c8ff;
+    color: #0a0e14;
+    box-shadow: 0 4px 20px rgba(0,200,255,0.25);
+    transition: transform 0.15s, box-shadow 0.2s;
+  }
+  .btn:active { transform: scale(0.96); }
+  .btn:hover { box-shadow: 0 6px 28px rgba(0,200,255,0.4); }
+  .note {
+    margin-top: 20px;
+    font-size: 0.72rem;
+    color: #556;
+    line-height: 1.6;
+  }
+  .note code { color: #00c8ff; background:#1e2a36; padding:2px 6px; border-radius:4px; }
+</style>
+</head>
+<body>
+
+<div class="card">
+  <h2>生成 App 图标</h2>
+  <p>点击下方按钮下载 PNG 图标文件，将它们放到与 <code>index.html</code> 同一目录下。</p>
+
+  <div class="previews">
+    <div class="preview-box">
+      <canvas id="preview192" width="192" height="192"></canvas>
+      <div class="label">192×192</div>
+    </div>
+    <div class="preview-box">
+      <canvas id="preview512" width="512" height="512"></canvas>
+      <div class="label">512×512</div>
+    </div>
+    <div class="preview-box">
+      <canvas id="preview180" width="180" height="180"></canvas>
+      <div class="label">180×180 (iOS)</div>
+    </div>
+  </div>
+
+  <button class="btn" onclick="downloadAll()">一键下载全部图标</button>
+  <div class="note">
+    下载后将 <code>icon-192.png</code>、<code>icon-512.png</code>、<code>icon-180.png</code><br>
+    放到 <code>GPS定位工具/</code> 文件夹内即可。
+  </div>
+</div>
+
+<script>
+  function drawIcon(canvas, size) {
+    const ctx = canvas.getContext('2d');
+    const s = size;
+    const cx = s / 2, cy = s / 2;
+
+    // Background — dark rounded square
+    const margin = s * 0.08;
+    const radius = s * 0.22;
+    ctx.beginPath();
+    ctx.roundRect(margin, margin, s - margin * 2, s - margin * 2, radius);
+    ctx.fillStyle = '#141b22';
+    ctx.fill();
+
+    // Subtle gradient overlay
+    const grad = ctx.createRadialGradient(cx, cy * 0.6, s * 0.08, cx, cy, s * 0.7);
+    grad.addColorStop(0, '#1a3050');
+    grad.addColorStop(1, '#0a0e14');
+    ctx.fillStyle = grad;
+    ctx.fill();
+
+    // Outer ring
+    const ringR = s * 0.28;
+    ctx.beginPath();
+    ctx.arc(cx, cy * 0.78, ringR, 0, Math.PI * 2);
+    ctx.strokeStyle = 'rgba(0,200,255,0.3)';
+    ctx.lineWidth = s * 0.018;
+    ctx.stroke();
+
+    // Inner circle (the "location dot")
+    const dotR = s * 0.09;
+    ctx.beginPath();
+    ctx.arc(cx, cy * 0.78, dotR, 0, Math.PI * 2);
+    ctx.fillStyle = '#00c8ff';
+    ctx.fill();
+    ctx.shadowColor = 'rgba(0,200,255,0.6)';
+    ctx.shadowBlur = s * 0.06;
+    ctx.fill();
+    ctx.shadowColor = 'transparent';
+    ctx.shadowBlur = 0;
+
+    // Pin shape (location marker)
+    const pinScale = s * 0.012;
+    ctx.save();
+    ctx.translate(cx, cy * 0.82);
+    ctx.beginPath();
+    // Teardrop/pin path
+    const pw = s * 0.11;
+    const ph = s * 0.17;
+    ctx.moveTo(0, -ph * 0.5); // top center
+    ctx.bezierCurveTo(-pw * 0.5, -ph * 0.1, -pw * 0.5, ph * 0.35, 0, ph * 0.5);
+    ctx.bezierCurveTo(pw * 0.5, ph * 0.35, pw * 0.5, -ph * 0.1, 0, -ph * 0.5);
+    ctx.fillStyle = '#00c8ff';
+    ctx.shadowColor = 'rgba(0,200,255,0.5)';
+    ctx.shadowBlur = s * 0.04;
+    ctx.fill();
+    ctx.shadowColor = 'transparent';
+    ctx.shadowBlur = 0;
+
+    // White dot in pin
+    ctx.beginPath();
+    ctx.arc(0, -ph * 0.08, s * 0.025, 0, Math.PI * 2);
+    ctx.fillStyle = '#ffffff';
+    ctx.fill();
+    ctx.restore();
+  }
+
+  // Draw previews
+  drawIcon(document.getElementById('preview192'), 192);
+  drawIcon(document.getElementById('preview512'), 512);
+  drawIcon(document.getElementById('preview180'), 180);
+
+  function downloadAll() {
+    const sizes = [
+      { canvas: document.getElementById('preview192'), name: 'icon-192.png' },
+      { canvas: document.getElementById('preview512'), name: 'icon-512.png' },
+      { canvas: document.getElementById('preview180'), name: 'icon-180.png' }
+    ];
+    sizes.forEach(({canvas, name}) => {
+      canvas.toBlob(blob => {
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = name;
+        a.click();
+        URL.revokeObjectURL(url);
+      }, 'image/png');
+    });
+  }
+</script>
+</body>
+</html>
