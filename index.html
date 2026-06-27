@@ -351,6 +351,28 @@
     background: rgba(0,200,255,0.03);
   }
 
+  /* Editable note cell */
+  tbody td.col-note { padding: 0; }
+  tbody td.col-note input {
+    width: 100%;
+    background: transparent;
+    border: 1.5px solid transparent;
+    color: var(--text);
+    font-size: 0.83rem;
+    font-family: inherit;
+    padding: 10px 12px;
+    border-radius: 6px;
+    outline: none;
+    transition: border-color 0.2s, background 0.2s;
+    -webkit-user-select: text;
+    user-select: text;
+  }
+  tbody td.col-note input:hover { border-color: var(--border); }
+  tbody td.col-note input:focus {
+    border-color: var(--accent);
+    background: rgba(0,200,255,0.03);
+  }
+
   .empty-table {
     text-align: center;
     padding: 42px 20px;
@@ -401,6 +423,7 @@
     .pin-icon { width: 36px; height: 36px; }
     thead th, tbody td { padding: 9px 10px; font-size: 0.76rem; }
     tbody td.col-id input { font-size: 0.76rem; padding: 8px 10px; }
+    tbody td.col-note input { font-size: 0.76rem; padding: 8px 10px; }
   }
 </style>
 </head>
@@ -473,11 +496,12 @@
             <th class="col-id">ID</th>
             <th class="col-lat">纬度 Latitude</th>
             <th class="col-lng">经度 Longitude</th>
+            <th class="col-note">备注</th>
           </tr>
         </thead>
         <tbody id="tableBody">
           <tr class="empty-row">
-            <td colspan="3">
+            <td colspan="4">
               <div class="empty-table">
                 <div class="icon">📍</div>
                 点击「定位当前位置」开始记录
@@ -531,10 +555,10 @@
       var raw = localStorage.getItem('gps_records');
       if (raw) {
         records = JSON.parse(raw);
-        // Restore number precision
         records.forEach(function(r) {
           r.lat = Number(r.lat);
           r.lng = Number(r.lng);
+          if (r.note === undefined) { r.note = ''; }
         });
       }
       var savedCounter = localStorage.getItem('gps_idCounter');
@@ -587,7 +611,7 @@
   function renderTable() {
     tableBody.innerHTML = '';
     if (records.length === 0) {
-      tableBody.innerHTML = '<tr class="empty-row"><td colspan="3"><div class="empty-table"><div class="icon">📍</div>暂无定位记录</div></td></tr>';
+      tableBody.innerHTML = '<tr class="empty-row"><td colspan="4"><div class="empty-table"><div class="icon">📍</div>暂无定位记录</div></td></tr>';
     } else {
       records.forEach(function(r, idx) {
         var tr = document.createElement('tr');
@@ -595,7 +619,9 @@
           '<td class="col-id"><input type="text" value="' + escapeHtml(r.id) +
           '" data-idx="' + idx + '" onchange="updateId(' + idx + ', this.value)" onfocus="this.select()" inputmode="text"></td>' +
           '<td>' + r.lat.toFixed(8) + '</td>' +
-          '<td>' + r.lng.toFixed(8) + '</td>';
+          '<td>' + r.lng.toFixed(8) + '</td>' +
+          '<td class="col-note"><input type="text" value="' + escapeHtml(r.note || '') +
+          '" data-idx="' + idx + '" onchange="updateNote(' + idx + ', this.value)" placeholder="" inputmode="text"></td>';
         tableBody.appendChild(tr);
       });
     }
@@ -611,12 +637,16 @@
   function updateId(idx, newVal) {
     var trimmed = newVal.trim();
     if (trimmed === '') {
-      // restore previous
       renderTable();
       return;
     }
     records[idx].id = trimmed;
     renderTable();
+    saveData();
+  }
+
+  function updateNote(idx, newVal) {
+    records[idx].note = newVal;
     saveData();
   }
 
@@ -640,7 +670,7 @@
         var acc = pos.coords.accuracy;
 
         lastAccuracy = acc;
-        records.push({ id: String(idCounter++), lat: lat, lng: lng });
+        records.push({ id: String(idCounter++), lat: lat, lng: lng, note: '' });
         renderTable();
         saveData();
 
@@ -651,7 +681,6 @@
         btnCapture.disabled = false;
         btnCapture.textContent = '定位当前位置';
 
-        // Vibrate on mobile if available
         if (navigator.vibrate) { navigator.vibrate(30); }
       },
       function(err) {
@@ -678,10 +707,10 @@
       showToast('没有数据可导出', true);
       return;
     }
-    var data = [['ID', '纬度 (Latitude)', '经度 (Longitude)']];
-    records.forEach(function(r) { data.push([r.id, r.lat, r.lng]); });
+    var data = [['ID', '纬度 (Latitude)', '经度 (Longitude)', '备注']];
+    records.forEach(function(r) { data.push([r.id, r.lat, r.lng, r.note || '']); });
     var ws = XLSX.utils.aoa_to_sheet(data);
-    ws['!cols'] = [{wch:14}, {wch:22}, {wch:22}];
+    ws['!cols'] = [{wch:14}, {wch:22}, {wch:22}, {wch:20}];
     var wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'GPS定位记录');
 
@@ -694,11 +723,9 @@
       String(now.getSeconds()).padStart(2,'0');
     var filename = 'GPS定位_' + ts + '.xlsx';
 
-    // Use SheetJS to generate array buffer, then handle download ourselves
     var wbout = XLSX.write(wb, {bookType:'xlsx', type:'array'});
     var blob = new Blob([wbout], {type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
 
-    // Try Web Share API first (best on iOS — opens native share sheet)
     if (navigator.share && navigator.canShare) {
       var file = new File([blob], filename, {type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
       if (navigator.canShare({files:[file]})) {
@@ -749,12 +776,10 @@
     btnCapture.textContent = '定位不可用';
   }
 
-  // ── Register Service Worker ─────
   if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('sw.js').catch(function() {});
   }
 
-  // ── Handle iOS standalone resize ─
   if (window.navigator.standalone) {
     document.body.style.minHeight = window.innerHeight + 'px';
     window.addEventListener('resize', function() {
